@@ -43,7 +43,7 @@ jobs:
           test "$(curl -s -o /dev/null -w '%{http_code}' -X POST localhost:8080/v1/smart-stack)" = 401
           docker rm -f authkit
       - name: Scan image for vulnerabilities
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: authkit-ts:${{ github.sha }}
           severity: CRITICAL,HIGH
