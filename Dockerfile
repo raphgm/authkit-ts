@@ -10,7 +10,7 @@ COPY test ./test
 RUN npm test && npm prune --omit=dev
 
 # Runtime stage: distroless, non-root, no shell, no package manager.
-FROM gcr.io/distroless/nodejs22-debian12:nonroot
+FROM gcr.io/distroless/nodejs22-debian13:nonroot
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /app/package.json ./
