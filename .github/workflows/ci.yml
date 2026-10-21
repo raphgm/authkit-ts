@@ -1,0 +1,60 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm audit --audit-level=high
+
+  image:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t authkit-ts:${{ github.sha }} .
+      - name: Smoke test the container
+        run: |
+          docker run -d --name authkit -p 8080:8080 \
+            -e TOKEN_SECRETS="$(openssl rand -hex 32)" \
+            -e GEMINI_API_KEY=dummy-for-smoke-test \
+            authkit-ts:${{ github.sha }}
+          for i in $(seq 1 20); do curl -fsS localhost:8080/healthz && break; sleep 1; done
+          curl -fsS -X POST localhost:8080/v1/devices | grep -q token
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST localhost:8080/v1/smart-stack)" = 401
+          docker rm -f authkit
+      - name: Scan image for vulnerabilities
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: authkit-ts:${{ github.sha }}
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+          ignore-unfixed: true
+      - name: Push to GHCR
+        if: github.ref == 'refs/heads/main'
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          IMAGE=ghcr.io/${{ github.repository_owner }}/authkit-ts
+          docker tag authkit-ts:${{ github.sha }} $IMAGE:${{ github.sha }}
+          docker tag authkit-ts:${{ github.sha }} $IMAGE:latest
+          docker push $IMAGE:${{ github.sha }}
+          docker push $IMAGE:latest
